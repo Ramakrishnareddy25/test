@@ -18,6 +18,8 @@ pipeline {
                 // sh 'cp -r myfile1.txt .'
 
                 // Add, commit, and push changes
+                sh 'git config --global user.email "ramakrishnareddytetali@gmail.com"'
+                sh 'git config --global user.name "ramakrishnareddy25"'
                 sh 'git add .'
                 sh 'git commit -m first'
                 sh 'git push origin master'
