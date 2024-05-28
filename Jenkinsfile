@@ -22,7 +22,7 @@ pipeline {
                 sh 'git config --global user.name "ramakrishnareddy25"'
                 sh 'git add .'
                 sh 'git commit -m first'
-                sh 'git remote add origin https://github.com/Ramakrishnareddy25/test.git'
+                sh 'git remote add origin git@github.com:Ramakrishnareddy25/test.git'
                 sh 'git push -u origin master'
             }
         }
