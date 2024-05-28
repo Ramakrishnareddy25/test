@@ -5,7 +5,7 @@ pipeline {
         stage('Generate File') {
             steps {
                 // Your script to generate the file
-                // Example: sh 'echo "Hello, world!" > myfile.txt'
+                  sh 'echo "Hello, world!" > myfile.txt'
             }
         }
 
