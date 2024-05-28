@@ -14,6 +14,7 @@ pipeline {
                 // Clone the public repository
                 // git branch: 'master', url: 'https://github.com/Ramakrishnareddy25/test.git'
                 // Copy generated file to the repository
+                sh 'rm -rf repo'
                 script {
                         sh '''
                             git config --global user.email "ramakrishnareddytetali@gmail.com"
