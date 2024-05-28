@@ -13,10 +13,9 @@ pipeline {
             steps {
                 // Clone the public repository
                 git branch: 'master', url: 'https://github.com/Ramakrishnareddy25/test.git'
-                sh 'cd test'
                 // Copy generated file to the repository
                 sh 'ls -l'
-                sh 'cp -r myfile1.txt .'
+                // sh 'cp -r myfile1.txt .'
 
                 // Add, commit, and push changes
                 sh 'git add .'
