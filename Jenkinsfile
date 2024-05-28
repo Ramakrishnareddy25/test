@@ -18,9 +18,9 @@ pipeline {
                 sh 'cp myfile.txt .'
 
                 // Add, commit, and push changes
-                git add '.'
-                git commit message: 'Generated file from Jenkins pipeline'
-                git push origin master
+                sh 'git add .'
+                sh 'git commit -m first'
+                sh 'git push origin master'
             }
         }
     }
