@@ -11,9 +11,10 @@ pipeline {
 
         stage('Store File in GitHub') {
             steps {
+                sh 'mkdir test2'
+                sh 'cd test2'
                 // Clone the public repository
                 git branch: 'master', url: 'https://github.com/Ramakrishnareddy25/test.git'
-
                 // Copy generated file to the repository
                 sh 'ls -l'
                 sh 'cp -r myfile1.txt .'
