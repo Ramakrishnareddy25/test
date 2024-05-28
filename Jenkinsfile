@@ -38,7 +38,8 @@ pipeline {
                 sh 'git add .'
                 sh 'git commit -m first'
                 // sh 'git remote add origin git@github.com:Ramakrishnareddy25/test.git'
-                sh 'git push https://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@github.com/Ramakrishnareddy25/test.git master'
+                sh 'git push https://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@github.com/Ramakrishnareddy25/test.git master
+'
             }
         }
     }
