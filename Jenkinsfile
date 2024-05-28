@@ -19,9 +19,9 @@ pipeline {
                         sh '''
                             git config --global user.email "ramakrishnareddytetali@gmail.com"
                             git config --global user.name "ramakrishnareddy25"
-                            git clone https://github.com/Ramakrishnareddy25/test.git repo
-                            cd repo
-                            git checkout test
+                            git clone https://github.com/Ramakrishnareddy25/test.git
+                            // cd repo
+                            // git checkout test
                             // cp ../${FILE_NAME} .
                             git add .
                             git commit -m "Add generated file from Jenkins pipeline"
