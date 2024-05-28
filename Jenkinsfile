@@ -5,7 +5,7 @@ pipeline {
         stage('Generate File') {
             steps {
                 // Your script to generate the file
-                  sh 'echo "Hello, world!" > myfile.txt'
+                  sh 'echo "Hello, world!" > myfile1.txt'
             }
         }
 
@@ -16,7 +16,7 @@ pipeline {
 
                 // Copy generated file to the repository
                 sh 'ls -l'
-                sh 'cp -r myfile.txt test/'
+                sh 'cp -r myfile1.txt .'
 
                 // Add, commit, and push changes
                 sh 'git add .'
