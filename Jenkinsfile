@@ -15,7 +15,7 @@ pipeline {
                 git branch: 'master', url: 'https://github.com/Ramakrishnareddy25/test.git'
 
                 // Copy generated file to the repository
-                sh 'cp myfile.txt test/'
+                sh 'cp -r myfile.txt test/'
 
                 // Add, commit, and push changes
                 sh 'git add .'
