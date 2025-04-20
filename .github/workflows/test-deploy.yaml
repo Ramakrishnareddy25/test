@@ -20,7 +20,7 @@ jobs:
       name: 'Authenticate to GCP'
       uses: 'google-github-actions/auth@v1'
       with:
-          create_credentials_file: 'true'
+          create_credentials_file: 'false'
           workload_identity_provider: 'projects/645536778937/locations/global/workloadIdentityPools/githubactions/providers/GitHub'
           service_account: 'github-actions@vast-silicon-456014-j2.iam.gserviceaccount.com'
     - id: 'gcloud'
