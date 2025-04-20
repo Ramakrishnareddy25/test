@@ -21,7 +21,7 @@ jobs:
       uses: 'google-github-actions/auth@v1'
       with:
           create_credentials_file: 'true'
-          workload_identity_provider: 'projects/645536778937/locations/global/workloadIdentityPools/githubactions/providers/github'
+          workload_identity_provider: 'projects/645536778937/locations/global/workloadIdentityPools/github-actions/providers/github'
           service_account: 'github-actions@vast-silicon-456014-j2.iam.gserviceaccount.com'
     - id: 'gcloud'
       name: 'gcloud'
