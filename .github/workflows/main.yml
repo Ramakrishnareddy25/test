@@ -2,7 +2,7 @@ name: List services in GCP
 on:
   pull_request:
     branches:
-      - main
+      - master
 jobs:
   build:
     # Allow the job to fetch a GitHub ID token
