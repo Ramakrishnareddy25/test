@@ -26,5 +26,6 @@ jobs:
     - id: 'gcloud'
       name: 'gcloud'
       run: |-
+        gcloud auth login --brief --cred-file="${{ steps.auth.outputs.credentials_file_path }}"
         gcloud config set project vast-silicon-456014-j2
         gcloud services list
