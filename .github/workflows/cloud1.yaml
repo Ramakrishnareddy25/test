@@ -10,7 +10,7 @@ on:
     paths: ['folder1/subfolder1/**']  
   pull_request:
     branches: [ "testbranch" ]
-    paths: ['folder1/**']  
+    paths: ['folder1/subfolder1/**']  
             # any file inside src/
 
   # Allows you to run this workflow manually from the Actions tab
