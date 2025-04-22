@@ -6,7 +6,7 @@ name: CI
 on:
   push:
     branches:
-      - master  # or any branch you want
+      - testbranch  # or any branch you want
     paths:
       - 'test/folder1/**'          # any file inside src/
 
