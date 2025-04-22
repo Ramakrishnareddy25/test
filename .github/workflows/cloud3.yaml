@@ -7,7 +7,7 @@ on:
   # Triggers the workflow on push or pull request events but only for the "master" branch
   push:
     branches: [ "testbranch" ]
-    paths: ['folder1/**']  
+    paths: ['folder1/subfolder2/**']  
   pull_request:
     branches: [ "testbranch" ]
     paths: ['folder1/subfolder2/**']  
