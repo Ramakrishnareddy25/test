@@ -9,8 +9,7 @@ on:
     branches:
       - master  # or any branch you want
     paths:
-      - 'folder2/**'          # any file inside src/
-
+      - 'test/folder2/**'     # any file inside src/
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
