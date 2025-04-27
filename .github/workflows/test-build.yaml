@@ -24,4 +24,5 @@ jobs:
       env:
         GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
       run: |
-        gcloud 
+        gcloud config set project vast-silicon-456014-j2
+        gcloud services list
