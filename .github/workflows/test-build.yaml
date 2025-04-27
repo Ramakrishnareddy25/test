@@ -1,4 +1,4 @@
-name: Deploy Nginx
+name: Connect to GCP
 
 on:
   push:
@@ -6,23 +6,24 @@ on:
     - 'master'
 
 jobs:
-  deploy:
+  gcp-authentication:
     runs-on: ubuntu-latest
+
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: code checkout
-      uses: actions/checkout@v2
-
-    - name: install the gcloud cli
-      uses: google-github-actions/setup-gcloud@v0
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
       with:
-        project_id: ${{ secrets.GOOGLE_PROJECT }}
-        service_account_key: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-        export_default_credentials: true
+        credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
 
-    - name: build and push the docker image
-      env:
-        GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
+    - name: Set up gcloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        install_components: 'gke-gcloud-auth-plugin' # optional, depending on what you need
+
+    - name: Test authentication (e.g., list GCP projects)
       run: |
-        gcloud config set project vast-silicon-456014-j2
-        gcloud services list
+        gcloud projects list
