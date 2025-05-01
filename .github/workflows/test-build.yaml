@@ -1,29 +1,30 @@
-name: Connect to GCP
+#  name: Connect to GCP
 
-on:
-  push:
-    branches:
-    - 'master'
+# on:
+#   push:
+#     branches:
+#     - 'master'
 
-jobs:
-  gcp-authentication:
-    runs-on: ubuntu-latest
+# jobs:
+#   gcp-authentication:
+#     runs-on: ubuntu-latest
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+#     steps:
+#     - name: Checkout code
+#       uses: actions/checkout@v4
 
-    - name: Authenticate to GCP
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+#     - name: Authenticate to GCP
+#       uses: google-github-actions/auth@v2
+#       with:
+#         credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
 
-    - name: Set up gcloud CLI
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        install_components: 'gke-gcloud-auth-plugin' # optional, depending on what you need
+#     - name: Set up gcloud CLI
+#       uses: google-github-actions/setup-gcloud@v2
+#       with:
+#         project_id: ${{ secrets.GCP_PROJECT_ID }}
+#         install_components: 'gke-gcloud-auth-plugin' # optional, depending on what you need
 
-    - name: Test authentication (e.g., list GCP projects)
-      run: |
-        gcloud projects list
+#     - name: Test authentication (e.g., list GCP projects)
+#       run: |
+#         gcloud projects list
+# */
