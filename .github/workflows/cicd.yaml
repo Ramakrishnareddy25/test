@@ -6,6 +6,11 @@ on:
       - master
     paths:
       - 'application/airflow/folder1/**'
+  push:
+    branches:
+      - master
+    paths:
+      - 'application/airflow/folder1/**'
 
 permissions:
   contents: read
