@@ -41,7 +41,7 @@ jobs:
     needs: security_scan
     runs-on: ubuntu-latest
     environment:
-      name: test-gcp-service-account
+      name: uat
       url: https://console.cloud.google.com/storage/browser/test-backend-123/terraform/dags
     steps:
       - name: Wait for Approval
@@ -51,6 +51,7 @@ jobs:
           minimum-approvals: 1
           issue-title: "Approval needed for Airflow DAG deployment to UAT"
           issue-body: "Review security scan report and approve deployment to UAT Composer."
+          secret: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
     name: Deploy DAGs to GCS - UAT
