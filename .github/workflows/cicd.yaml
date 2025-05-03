@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - 'application/airflow/folder1/**'
+
   push:
     branches:
       - master
@@ -13,33 +14,59 @@ on:
       - 'application/airflow/folder1/**'
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
   id-token: write
 
+# --------- STEP 1: PR Checks (Security Scan only) ---------
 jobs:
-  security_scan:
-    name: Security Scan - Airflow Code
+  pr_security_scan:
+    if: github.event_name == 'pull_request'
+    name: PR Security Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Scan with Bandit (Python security)
+      - name: Run Bandit Scan
         run: |
           pip install bandit
           bandit -r application/airflow/ -f html -o bandit-report.html || true
 
-      - name: Upload Scan Report
+      - name: Upload Bandit Report
         uses: actions/upload-artifact@v4
         with:
           name: bandit-security-report
           path: bandit-report.html
 
-  approval:
-    name: Manual Approval Required
-    needs: security_scan
+# --------- STEP 2: Post-Merge Deployment Flow ---------
+  post_merge_security_scan:
+    if: github.event_name == 'push'
+    name: Post-Merge Security Scan
+    runs-on: ubuntu-latest
+    outputs:
+      scan_result: ${{ steps.scan.outcome }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Run Bandit Scan
+        id: scan
+        run: |
+          pip install bandit
+          bandit -r application/airflow/ -f html -o bandit-report.html || true
+
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-merge-bandit-security-report
+          path: bandit-report.html
+
+  manual_approval:
+    if: github.event_name == 'push'
+    name: Manual Approval
+    needs: post_merge_security_scan
     runs-on: ubuntu-latest
     environment:
       name: uat
@@ -50,13 +77,14 @@ jobs:
         with:
           approvers: jyotibhagat1
           minimum-approvals: 1
-          issue-title: "Approval needed for Airflow DAG deployment to UAT"
-          issue-body: "Review security scan report and approve deployment to UAT Composer."
+          issue-title: "Manual Approval for Airflow DAG Deployment"
+          issue-body: "Security scan passed. Please approve deployment to UAT Composer."
           secret: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
+    if: github.event_name == 'push'
     name: Deploy DAGs to GCS - UAT
-    needs: approval
+    needs: manual_approval
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -65,33 +93,32 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-         credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
 
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
-         project_id: ${{ secrets.GCP_PROJECT_ID }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Copy Only Updated DAGs
+      - name: Upload Updated DAGs
         run: |
           export DAG_FOLDER="application/airflow/"
           export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
 
-          echo "Syncing only updated DAGs..."
+          echo "Syncing updated DAGs to GCS..."
           gsutil -m rsync -r -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
 
-      - name: Post Deployment Verification
+      - name: Verify Deployment
         run: |
-          echo "Deployment to GCS done. Listing deployed DAGs..."
+          echo "Deployed DAGs:"
           gsutil ls gs://test-backend-123/terraform/dags
 
   rollback:
+    if: github.event_name == 'push' && failure()
     name: Rollback on Failure
-    if: failure()
     runs-on: ubuntu-latest
     steps:
-      - name: Rollback DAGs to Previous State
+      - name: Rollback DAGs
         run: |
-          echo "Rolling back to previous DAGs backup..."
-          # Optional: Pull backup from separate GCS bucket
-          # gsutil -m cp -r gs://test-backend-123/terraform/dags/* gs://test-backend-123/terraform/dags/
+          echo "Rolling back to backup DAGs..."
+          # gsutil -m cp -r gs://test-backend-123/dags/* gs://test-backend-123/terraform/dags/
