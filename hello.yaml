@@ -1,0 +1,98 @@
+
+name: Airflow DAG Deployment - UAT
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'application/airflow/folder1/**'
+  push:
+    branches:
+      - master
+    paths:
+      - 'application/airflow/folder1/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  security_scan:
+    name: Security Scan - Airflow Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Scan with Bandit (Python security)
+        run: |
+          pip install bandit
+          bandit -r application/airflow/ -f html -o bandit-report.html || true
+
+      - name: Upload Scan Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.html
+
+  approval:
+    name: Manual Approval Required
+    needs: security_scan
+    runs-on: ubuntu-latest
+    environment:
+      name: uat
+      url: https://console.cloud.google.com/storage/browser/test-backend-123/terraform/dags
+    steps:
+      - name: Wait for Approval
+        uses: trstringer/manual-approval@v1
+        with:
+          approvers: jyotibhagat1
+          minimum-approvals: 1
+          issue-title: "Approval needed for Airflow DAG deployment to UAT"
+          issue-body: "Review security scan report and approve deployment to UAT Composer."
+          secret: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    name: Deploy DAGs to GCS - UAT
+    needs: approval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+         credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+         project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Copy Only Updated DAGs
+        run: |
+          export DAG_FOLDER="application/airflow/"
+          export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
+
+          echo "Syncing only updated DAGs..."
+          gsutil -m rsync -r -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
+
+      - name: Post Deployment Verification
+        run: |
+          echo "Deployment to GCS done. Listing deployed DAGs..."
+          gsutil ls gs://test-backend-123/terraform/dags
+
+  rollback:
+    name: Rollback on Failure
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback DAGs to Previous State
+        run: |
+          echo "Rolling back to previous DAGs backup..."
+          # Optional: Pull backup from separate GCS bucket
+          # gsutil -m cp -r gs://test-backend-123/terraform/dags/* gs://test-backend-123/terraform/dags/
