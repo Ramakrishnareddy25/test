@@ -100,13 +100,20 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      - name: Dry Run - Show what will be deployed
+        run: |
+          echo "Dry run - displaying changes that would be made to GCS DAG bucket..."
+          export DAG_FOLDER="application/airflow/"
+          export TARGET_BUCKET="gs://vece_assist_uat_composer_bucket/dags/"
+          gsutil -m rsync -r -c -n -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
+
       - name: Upload Updated DAGs
         run: |
           export DAG_FOLDER="application/airflow/"
           export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
 
           echo "Syncing updated DAGs to GCS..."
-          gsutil -m rsync -r -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
+          gsutil -m rsync -r -c -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
 
       - name: Verify Deployment
         run: |
