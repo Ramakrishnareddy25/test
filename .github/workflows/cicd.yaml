@@ -104,7 +104,7 @@ jobs:
         run: |
           echo "Dry run - displaying changes that would be made to GCS DAG bucket..."
           export DAG_FOLDER="application/airflow/"
-          export TARGET_BUCKET="gs://vece_assist_uat_composer_bucket/dags/"
+          export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
           gsutil -m rsync -r -c -n -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
 
       - name: Upload Updated DAGs
