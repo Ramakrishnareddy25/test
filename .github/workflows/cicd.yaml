@@ -1,124 +1,124 @@
-name: Airflow DAG Deployment - UAT
+# name: Airflow DAG Deployment - UAT
 
-on:
-  pull_request:
-    branches:
-      - master
-    paths:
-      - 'application/airflow/folder1/**'
+# on:
+#   pull_request:
+#     branches:
+#       - master
+#     paths:
+#       - 'application/airflow/folder1/**'
 
-  push:
-    branches:
-      - master
-    paths:
-      - 'application/airflow/folder1/**'
+#   push:
+#     branches:
+#       - master
+#     paths:
+#       - 'application/airflow/folder1/**'
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  id-token: write
+# permissions:
+#   contents: write
+#   pull-requests: write
+#   issues: write
+#   id-token: write
 
-# --------- STEP 1: PR Checks (Security Scan only) ---------
-jobs:
-  pr_security_scan:
-    if: github.event_name == 'pull_request'
-    name: PR Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+# # --------- STEP 1: PR Checks (Security Scan only) ---------
+# jobs:
+#   pr_security_scan:
+#     if: github.event_name == 'pull_request'
+#     name: PR Security Scan
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v3
 
-      - name: Run Bandit Scan
-        run: |
-          pip install bandit
-          bandit -r application/airflow/ -f html -o bandit-report.html || true
+#       - name: Run Bandit Scan
+#         run: |
+#           pip install bandit
+#           bandit -r application/airflow/ -f html -o bandit-report.html || true
 
-      - name: Upload Bandit Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-security-report
-          path: bandit-report.html
+#       - name: Upload Bandit Report
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: bandit-security-report
+#           path: bandit-report.html
 
-# --------- STEP 2: Post-Merge Deployment Flow ---------
-  post_merge_security_scan:
-    if: github.event_name == 'push'
-    name: Post-Merge Security Scan
-    runs-on: ubuntu-latest
-    outputs:
-      scan_result: ${{ steps.scan.outcome }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+# # --------- STEP 2: Post-Merge Deployment Flow ---------
+#   post_merge_security_scan:
+#     if: github.event_name == 'push'
+#     name: Post-Merge Security Scan
+#     runs-on: ubuntu-latest
+#     outputs:
+#       scan_result: ${{ steps.scan.outcome }}
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v3
 
-      - name: Run Bandit Scan
-        id: scan
-        run: |
-          pip install bandit
-          bandit -r application/airflow/ -f html -o bandit-report.html || true
+#       - name: Run Bandit Scan
+#         id: scan
+#         run: |
+#           pip install bandit
+#           bandit -r application/airflow/ -f html -o bandit-report.html || true
 
-      - name: Upload Bandit Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: post-merge-bandit-security-report
-          path: bandit-report.html
+#       - name: Upload Bandit Report
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: post-merge-bandit-security-report
+#           path: bandit-report.html
 
-  manual_approval:
-    if: github.event_name == 'push'
-    name: Manual Approval
-    needs: post_merge_security_scan
-    runs-on: ubuntu-latest
-    environment:
-      name: uat
-      url: https://console.cloud.google.com/storage/browser/test-backend-123/terraform/dags
-    steps:
-      - name: Wait for Approval
-        uses: trstringer/manual-approval@v1
-        with:
-          approvers: jyotibhagat1
-          minimum-approvals: 1
-          issue-title: "Manual Approval for Airflow DAG Deployment"
-          issue-body: "Security scan passed. Please approve deployment to UAT Composer."
-          secret: ${{ secrets.GITHUB_TOKEN }}
+#   manual_approval:
+#     if: github.event_name == 'push'
+#     name: Manual Approval
+#     needs: post_merge_security_scan
+#     runs-on: ubuntu-latest
+#     environment:
+#       name: uat
+#       url: https://console.cloud.google.com/storage/browser/test-backend-123/terraform/dags
+#     steps:
+#       - name: Wait for Approval
+#         uses: trstringer/manual-approval@v1
+#         with:
+#           approvers: jyotibhagat1
+#           minimum-approvals: 1
+#           issue-title: "Manual Approval for Airflow DAG Deployment"
+#           issue-body: "Security scan passed. Please approve deployment to UAT Composer."
+#           secret: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy:
-    if: github.event_name == 'push'
-    name: Deploy DAGs to GCS - UAT
-    needs: manual_approval
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+#   deploy:
+#     if: github.event_name == 'push'
+#     name: Deploy DAGs to GCS - UAT
+#     needs: manual_approval
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v3
 
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+#       - name: Authenticate to GCP
+#         uses: google-github-actions/auth@v2
+#         with:
+#           credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
 
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+#       - name: Set up gcloud CLI
+#         uses: google-github-actions/setup-gcloud@v2
+#         with:
+#           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Upload Updated DAGs
-        run: |
-          export DAG_FOLDER="application/airflow/"
-          export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
+#       - name: Upload Updated DAGs
+#         run: |
+#           export DAG_FOLDER="application/airflow/"
+#           export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
 
-          echo "Syncing updated DAGs to GCS..."
-          gsutil -m rsync -r -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
+#           echo "Syncing updated DAGs to GCS..."
+#           gsutil -m rsync -r -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
 
-      - name: Verify Deployment
-        run: |
-          echo "Deployed DAGs:"
-          gsutil ls gs://test-backend-123/terraform/dags
+#       - name: Verify Deployment
+#         run: |
+#           echo "Deployed DAGs:"
+#           gsutil ls gs://test-backend-123/terraform/dags
 
-  rollback:
-    if: github.event_name == 'push' && failure()
-    name: Rollback on Failure
-    runs-on: ubuntu-latest
-    steps:
-      - name: Rollback DAGs
-        run: |
-          echo "Rolling back to backup DAGs..."
-          # gsutil -m cp -r gs://test-backend-123/dags/* gs://test-backend-123/terraform/dags/
+#   rollback:
+#     if: github.event_name == 'push' && failure()
+#     name: Rollback on Failure
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Rollback DAGs
+#         run: |
+#           echo "Rolling back to backup DAGs..."
+#           # gsutil -m cp -r gs://test-backend-123/dags/* gs://test-backend-123/terraform/dags/
