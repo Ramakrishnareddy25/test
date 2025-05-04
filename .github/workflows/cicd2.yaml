@@ -1,0 +1,109 @@
+name: Airflow DAG CI/CD - UAT
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'application/airflow/**'
+
+  push:
+    branches:
+      - master
+    paths:
+      - 'application/airflow/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  security_scan:
+    if: github.event_name == 'pull_request'
+    name: Bandit & Trivy Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Bandit and Trivy
+        run: |
+          pip install bandit
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
+
+      - name: Run Bandit
+        run: |
+          bandit -r application/airflow/ -f html -o bandit-report.html || true
+
+      - name: Run Trivy Vulnerability Scan
+        run: |
+          trivy fs --format html --output trivy-report.html . || true
+
+      - name: Upload Scan Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.html
+            trivy-report.html
+
+  approval:
+    if: github.event_name == 'push'
+    name: Manual Approval Before Deployment
+    needs: security_scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Manual Approval
+        uses: trstringer/manual-approval@v1
+        with:
+          approvers: jyotibhagat1
+          minimum-approvals: 1
+          issue-title: "Manual Approval for DAG Upload"
+          issue-body: "Review Bandit and Trivy scan reports in artifacts before deploying to UAT."
+          secret: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    if: github.event_name == 'push'
+    name: Deploy Updated DAGs to GCS (UAT)
+    needs: approval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Auth to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy only changed DAGs
+        env:
+          BUCKET_PATH: gs://test-backend-123/terraform/dags
+          DAG_FOLDER: application/airflow/
+        run: |
+          changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep "^$DAG_FOLDER")
+
+          echo "Modified DAG files:"
+          echo "$changed_files"
+
+          for file in $changed_files; do
+            if [[ -f "$file" ]]; then
+              echo "Uploading $file"
+              gsutil cp "$file" "$BUCKET_PATH/$file"
+            fi
+          done
+
+      - name: Verify DAGs in GCS
+        run: |
+          echo "GCS DAG directory:"
+          gsutil ls gs://test-backend-123/terraform/dags/
