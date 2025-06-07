@@ -1,0 +1,162 @@
+name: Kubernetes Deployment
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'application/kubernetes/**'
+
+  push:
+    branches:
+      - master
+    paths:
+      - 'application/kubernetes/**'
+
+# --------- STEP 1: PR Checks (Security Scan only) ---------
+jobs:
+  pr_security_scan:
+    if: github.event_name == 'pull_request'
+    name: PR Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: setup python 3.12
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m  pip install --upgrade pip
+          pip install flake8 pytest
+          if [-f requirements.txt]; then pip install -r requirements.txt; fi
+
+      - name: Lint the flakes
+        run: |
+          # stop the build if there aare python errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The Github editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+# --------- STEP 2: Post-Merge Deployment Flow ---------
+  post_merge_security_scan:
+    if: github.event_name == 'push'
+    name: Post-Merge SonarQube Scan
+    runs-on: ubuntu-latest
+    outputs:
+      scan_result: ${{ steps.scan.outcome }}
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: SonarQube Scan
+      uses: SonarSource/sonarqube-scan-action@v5.2.0 # Ex: v4.1.0, See the latest version at https://github.com/marketplace/actions/official-sonarqube-scan
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+
+    - name: SonarQube Quality Gate check
+      id: quality_check
+      uses: sonarsource/sonarqube-quality-gate-action@master
+      with:
+          pollingTimeoutSec: 600
+      env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+
+    - name: SonarQube Quality Gate fails
+      if: steps.quality_check.outcome != 'success'
+      run: |
+        echo  "SonarQube Quality Gate check failed. Stopping pipeline."
+        exit 1
+
+  deploy:
+    if: github.event_name == 'push'
+    name: Build, Scan and Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: europe-west2-docker.pkg.dev/vast-silicon-456014-j2/test-repo/test:latest
+      CLUSTER_NAME: your-cluster-name
+      CLUSTER_ZONE: europe-west2-a
+      CLUSTER_PROJECT: vast-silicon-456014-j2
+    outputs:
+      scan_result: ${{ steps.scan.outcome }}
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+
+    - name: Set up gcloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: vast-silicon-456014-j2
+
+    - name: Build and Push Docker Image
+      run: |
+        gcloud auth configure-docker europe-west2-docker.pkg.dev
+        docker build -t $IMAGE .
+
+
+    # https://github.com/marketplace/actions/prisma-cloud-scan
+    - name: Prisma Cloud image scan
+      id: prisma_scan
+      uses: PaloAltoNetworks/prisma-cloud-scan@v1.5
+      with:
+         pcc_console_url: ${{ secrets.PCC_CONSOLE_URL }}
+         pcc_user: ${{ secrets.PCC_USER }}
+         pcc_pass: ${{ secrets.PCC_PASS }}
+         image_name: $IMAGE
+
+      # (Optional) for compatibility with GitHub's code scanning alerts
+    - name: Upload SARIF file
+      if: ${{ always() }} # necessary if using failure thresholds in the image scan
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif_file }}
+
+    - name: Check Prisma Scan Result
+      if: steps.prisma_scan.outcome != 'success'
+      run: |
+        echo "Prisma scan failed, stopping deployment."
+        exit 1
+
+    - name: Push Docker Image
+      run: |
+        docker push $IMAGE
+    
+    - name: Get GKE credentials
+      run: |
+        gcloud container clusters get-credentials $CLUSTER_NAME \
+          --zone $CLUSTER_ZONE \
+          --project $CLUSTER_PROJECT
+
+    - name: Deploy to GKE using kubectl
+      run: |
+        # Replace this with your actual Kubernetes deployment file path
+        # Assumes a valid deployment.yaml with image placeholder
+        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" k8s/deployment.yaml
+        kubectl apply -f k8s/*
+
+    - name: Deploy to GKE using kubectl
+      run: |
+        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" k8s/deployment.yaml
+        kubectl apply -f k8s/
+
+    - name: Verify Kubernetes Deployment
+      run: |
+        DEPLOYMENT_NAME=your-deployment-name         # <-- Replace with your deployment name
+        NAMESPACE=default                             # <-- Replace if using a different namespace
+
+        echo "Waiting for deployment rollout to complete"
+        kubectl rollout status deployment/$DEPLOYMENT_NAME --namespace $NAMESPACE --timeout=120s
+
+        echo "Deployment rollout completed. Checking pods"
+        kubectl get pods --namespace $NAMESPACE
