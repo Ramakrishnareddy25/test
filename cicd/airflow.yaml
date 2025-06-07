@@ -5,13 +5,13 @@ on:
     branches:
       - master
     paths:
-      - 'application/cloudrun/**'
+      - 'application/airflow/**'
 
   push:
     branches:
       - master
     paths:
-      - 'application/cloudrun/**'
+      - 'application/airflow/**'
 
 # --------- STEP 1: PR Checks (Security Scan only) ---------
 jobs:
