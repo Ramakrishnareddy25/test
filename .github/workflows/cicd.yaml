@@ -28,104 +28,109 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+        with:
+         ref: master  # ✅ Specific branch
+         sparse-checkout: |
+             application/airflow/folder1/
+         sparse-checkout-cone-mode: false
+         fetch-depth: 1
 
       - name: Run Bandit Scan
         run: |
-          pip install bandit
-          bandit -r application/airflow/ -f html -o bandit-report.html || true
+          ls
 
-      - name: Upload Bandit Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-security-report
-          path: bandit-report.html
+      # - name: Upload Bandit Report
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: bandit-security-report
+      #     path: bandit-report.html
 
-# --------- STEP 2: Post-Merge Deployment Flow ---------
-  post_merge_security_scan:
-    if: github.event_name == 'push'
-    name: Post-Merge Security Scan
-    runs-on: ubuntu-latest
-    outputs:
-      scan_result: ${{ steps.scan.outcome }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+# # --------- STEP 2: Post-Merge Deployment Flow ---------
+#   post_merge_security_scan:
+#     if: github.event_name == 'push'
+#     name: Post-Merge Security Scan
+#     runs-on: ubuntu-latest
+#     outputs:
+#       scan_result: ${{ steps.scan.outcome }}
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v3
 
-      - name: Run Bandit Scan
-        id: scan
-        run: |
-          pip install bandit
-          bandit -r application/airflow/ -f html -o bandit-report.html || true
+#       - name: Run Bandit Scan
+#         id: scan
+#         run: |
+#           pip install bandit
+#           bandit -r application/airflow/ -f html -o bandit-report.html || true
 
-      - name: Upload Bandit Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: post-merge-bandit-security-report
-          path: bandit-report.html
+#       - name: Upload Bandit Report
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: post-merge-bandit-security-report
+#           path: bandit-report.html
 
-  manual_approval:
-    if: github.event_name == 'push'
-    name: Manual Approval
-    needs: post_merge_security_scan
-    runs-on: ubuntu-latest
-    environment:
-      name: uat
-      url: https://console.cloud.google.com/storage/browser/test-backend-123/terraform/dags
-    steps:
-      - name: Wait for Approval
-        uses: trstringer/manual-approval@v1
-        with:
-          approvers: jyotibhagat1
-          minimum-approvals: 1
-          issue-title: "Manual Approval for Airflow DAG Deployment"
-          issue-body: "Security scan passed. Please approve deployment to UAT Composer."
-          secret: ${{ secrets.GITHUB_TOKEN }}
+#   manual_approval:
+#     if: github.event_name == 'push'
+#     name: Manual Approval
+#     needs: post_merge_security_scan
+#     runs-on: ubuntu-latest
+#     environment:
+#       name: uat
+#       url: https://console.cloud.google.com/storage/browser/test-backend-123/terraform/dags
+#     steps:
+#       - name: Wait for Approval
+#         uses: trstringer/manual-approval@v1
+#         with:
+#           approvers: jyotibhagat1
+#           minimum-approvals: 1
+#           issue-title: "Manual Approval for Airflow DAG Deployment"
+#           issue-body: "Security scan passed. Please approve deployment to UAT Composer."
+#           secret: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy:
-    if: github.event_name == 'push'
-    name: Deploy DAGs to GCS - UAT
-    needs: manual_approval
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+#   deploy:
+#     if: github.event_name == 'push'
+#     name: Deploy DAGs to GCS - UAT
+#     needs: manual_approval
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v3
 
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+#       - name: Authenticate to GCP
+#         uses: google-github-actions/auth@v2
+#         with:
+#           credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
 
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+#       - name: Set up gcloud CLI
+#         uses: google-github-actions/setup-gcloud@v2
+#         with:
+#           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Dry Run - Show what will be deployed
-        run: |
-          echo "Dry run - displaying changes that would be made to GCS DAG bucket..."
-          export DAG_FOLDER="application/airflow/"
-          export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
-          gsutil -m rsync -r -c -n -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
+#       - name: Dry Run - Show what will be deployed
+#         run: |
+#           echo "Dry run - displaying changes that would be made to GCS DAG bucket..."
+#           export DAG_FOLDER="application/airflow/"
+#           export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
+#           gsutil -m rsync -r -c -n -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
 
-      - name: Upload Updated DAGs
-        run: |
-          export DAG_FOLDER="application/airflow/"
-          export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
+#       - name: Upload Updated DAGs
+#         run: |
+#           export DAG_FOLDER="application/airflow/"
+#           export TARGET_BUCKET="gs://test-backend-123/terraform/dags"
 
-          echo "Syncing updated DAGs to GCS..."
-          gsutil -m rsync -r -c -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
+#           echo "Syncing updated DAGs to GCS..."
+#           gsutil -m rsync -r -c -x "^.*(_pycache|.pytest_cache|.git|.DS_Store|init_.pyc|.ipynb_checkpoints|.log)$" $DAG_FOLDER $TARGET_BUCKET
 
-      - name: Verify Deployment
-        run: |
-          echo "Deployed DAGs:"
-          gsutil ls gs://test-backend-123/terraform/dags
+#       - name: Verify Deployment
+#         run: |
+#           echo "Deployed DAGs:"
+#           gsutil ls gs://test-backend-123/terraform/dags
 
-  rollback:
-    if: github.event_name == 'push' && failure()
-    name: Rollback on Failure
-    runs-on: ubuntu-latest
-    steps:
-      - name: Rollback DAGs
-        run: |
-          echo "Rolling back to backup DAGs..."
-          # gsutil -m cp -r gs://test-backend-123/dags/* gs://test-backend-123/terraform/dags/
+#   rollback:
+#     if: github.event_name == 'push' && failure()
+#     name: Rollback on Failure
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Rollback DAGs
+#         run: |
+#           echo "Rolling back to backup DAGs..."
+#           # gsutil -m cp -r gs://test-backend-123/dags/* gs://test-backend-123/terraform/dags/
