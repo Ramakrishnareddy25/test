@@ -1,4 +1,4 @@
-name: Airflow DAG Deployment - UAT
+name: cloud run Deployment - UAT
 
 on:
   pull_request:
