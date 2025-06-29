@@ -1,0 +1,94 @@
+name: Airflow DAG CI/CD
+
+on:
+  push:
+    branches:
+      - master
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Artifact version to deploy (e.g., v1.0.25)'
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  ## -------- CI: Build, Tag, Release, Upload to JFrog --------
+  build_tag_release:
+    if: github.event_name == 'push'
+    name: Build, Tag, Release, and Upload
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Required for git tag
+
+      - name: Set Version
+        id: versioning
+        run: |
+          VERSION="v1.0.${{ github.run_number }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create ZIP Artifact
+        run: |
+          mkdir -p build
+          zip -r build/dag-${{ env.VERSION }}.zip application/airflow/folder1
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag -a ${{ env.VERSION }} -m "Release ${{ env.VERSION }}"
+          git push origin ${{ env.VERSION }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          body: |
+            ## DAG Release ${{ env.VERSION }}
+            Artifact will be uploaded to JFrog:
+            `dag-${{ env.VERSION }}.zip`
+
+      - name: Upload to JFrog Artifactory
+        run: |
+          curl -u ${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }} \
+            -T build/dag-${{ env.VERSION }}.zip \
+            "https://your-jfrog-instance.jfrog.io/artifactory/your-repo/dag-${{ env.VERSION }}.zip"
+
+  ## -------- CD: Manual Deployment to UAT --------
+  deploy_to_uat:
+    if: github.event_name == 'workflow_dispatch'
+    name: Deploy DAG to GCS - UAT
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Artifact from JFrog
+        run: |
+          curl -u ${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }} \
+            -O "https://your-jfrog-instance.jfrog.io/artifactory/your-repo/dag-${{ github.event.inputs.version }}.zip"
+
+      - name: Unzip Artifact
+        run: |
+          unzip dag-${{ github.event.inputs.version }}.zip -d dags/
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Upload DAGs to GCS
+        run: |
+          gsutil -m rsync -r -c dags/application/airflow/folder1 gs://test-backend-123/terraform/dags
