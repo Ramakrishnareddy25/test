@@ -1,0 +1,193 @@
+name: Airflow DAG CI/CD
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'application/airflow/**'
+
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'application/airflow/**'
+
+  workflow_dispatch:
+    inputs:
+      rollback_version:
+        description: 'Enter version to rollback to (e.g., v1.0.25)'
+        required: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  # -------- PR Lint Check --------
+  pr_security_scan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # -------- SonarQube Scan --------
+  post_merge_security_scan:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      scan_result: ${{ steps.quality_check.outcome }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5.2.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+
+      - name: Quality Gate
+        id: quality_check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+
+      - name: Fail if gate fails
+        if: steps.quality_check.outcome != 'success'
+        run: exit 1
+
+  # -------- Create Release + Upload to JFrog --------
+  release_and_publish:
+    if: github.event_name == 'push'
+    needs: post_merge_security_scan
+    runs-on: ubuntu-latest
+    outputs:
+      release_version: ${{ steps.set_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set version
+        id: set_version
+        run: |
+          VERSION="v1.0.${{ github.run_number }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Zip DAGs
+        run: |
+          mkdir -p build
+          zip -r build/dag-${{ env.VERSION }}.zip application/airflow/
+
+      - name: Git tag & release
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag -a ${{ env.VERSION }} -m "Release ${{ env.VERSION }}"
+          git push origin ${{ env.VERSION }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          body: "DAG artifact ${{ env.VERSION }} released."
+
+      - name: Upload to JFrog
+        run: |
+          curl -u ${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }} \
+            -T build/dag-${{ env.VERSION }}.zip \
+            "https://your-jfrog-instance.jfrog.io/artifactory/your-repo/dag-${{ env.VERSION }}.zip"
+
+  # -------- Manual Approval --------
+  manual_approval:
+    if: github.event_name == 'push'
+    needs: release_and_publish
+    runs-on: ubuntu-latest
+    environment:
+      name: uat
+      url: https://console.cloud.google.com/storage/browser/test-backend-123/terraform/dags
+    steps:
+      - name: Wait for approval
+        uses: trstringer/manual-approval@v1
+        with:
+          approvers: jyotibhagat1
+          minimum-approvals: 1
+          issue-title: "Approve DAG deployment"
+          issue-body: "Please approve deployment of `${{ needs.release_and_publish.outputs.release_version }}` to UAT."
+          secret: ${{ secrets.GITHUB_TOKEN }}
+
+  # -------- DAG Deploy from JFrog --------
+  deploy_to_gcs:
+    if: github.event_name == 'push'
+    needs: [release_and_publish, manual_approval]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        run: |
+          curl -f -u ${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }} \
+            -O "https://your-jfrog-instance.jfrog.io/artifactory/your-repo/dag-${{ needs.release_and_publish.outputs.release_version }}.zip"
+
+      - name: Unzip
+        run: unzip dag-${{ needs.release_and_publish.outputs.release_version }}.zip -d dags/
+
+      - name: GCP auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Upload DAGs
+        run: gsutil -m rsync -r -c dags/application/airflow/ gs://test-backend-123/terraform/dags
+
+  # -------- Manual Rollback --------
+  rollback_to_version:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download rollback artifact
+        run: |
+          curl -f -u ${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }} \
+            -O "https://your-jfrog-instance.jfrog.io/artifactory/your-repo/dag-${{ github.event.inputs.rollback_version }}.zip"
+
+      - name: Unzip rollback
+        run: unzip dag-${{ github.event.inputs.rollback_version }}.zip -d dags/
+
+      - name: GCP auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Rollback to version
+        run: |
+          echo "Rolling back to version ${{ github.event.inputs.rollback_version }}"
+          gsutil -m rsync -r -c dags/application/airflow/ gs://test-backend-123/terraform/dags
