@@ -175,11 +175,35 @@ jobs:
           gsutil -m rsync -r -c dags/application/airflow/ gs://test-backend-123/terraform/dags
 
   # ---------- STEP 6: Rollback on Failure ----------
-  rollback:
-    if: github.event_name == 'push' && failure()
-    name: Rollback DAGs from Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., v1.0.25)'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy_to_gcs:
+    name: Deploy DAGs from JFrog to GCS
     runs-on: ubuntu-latest
+
     steps:
+      - name: Download Artifact from JFrog
+        run: |
+          echo "Downloading dag-${{ inputs.version }}.zip from JFrog..."
+          curl -f -u ${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }} \
+            -O "https://your-jfrog-instance.jfrog.io/artifactory/your-repo/dag-${{ inputs.version }}.zip"
+
+      - name: Unzip Artifact
+        run: |
+          echo "Unzipping dag-${{ inputs.version }}.zip..."
+          unzip dag-${{ inputs.version }}.zip -d dags/
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -190,8 +214,12 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Rollback DAGs
+      - name: Upload DAGs to GCS
         run: |
-          echo "Rolling back DAGs..."
-          # Replace this with actual backup timestamp if needed
-          gsutil -m cp -r gs://test-backend-123/terraform/backups/latest/* gs://test-backend-123/terraform/dags/
+          echo "Uploading DAGs to GCS..."
+          gsutil -m rsync -r -c dags/application/airflow/ gs://test-backend-123/terraform/dags
+
+      - name: Verify Deployed DAGs
+        run: |
+          echo "Listing files in GCS:"
+          gsutil ls gs://test-backend-123/terraform/dags
